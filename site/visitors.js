@@ -57,17 +57,21 @@
       el.style.cssText = "text-align:center;font-size:14px;color:#666;margin:18px 0 24px;";
       (document.querySelector("main") || document.body).appendChild(el);
     }
+    if (onStats) {
+      const seen = counts.page.total;
+      el.textContent = seen
+        ? `👀 ${seen === 1 ? "1 person has" : `${n(seen)} people have`} looked at these stats`
+        : "👀 Nobody has looked at these stats yet";
+      return;
+    }
     el.textContent = `👋 ${plural(counts.site.total, "visitor")}`;
-    if (!onStats && counts.page.total !== counts.site.total) {
+    if (counts.page.total !== counts.site.total) {
       el.append(` · ${n(counts.page.total)} on this page`);
     }
-    if (!onStats) {
-      el.append(" · ");
-      const a = document.createElement("a");
-      a.href = "/stats.html";
-      a.textContent = "where from?";
-      a.style.color = "inherit";
-      el.append(a);
-    }
+    const a = document.createElement("a");
+    a.href = "/stats.html";
+    a.textContent = "where from?";
+    a.style.color = "inherit";
+    el.append(" · ", a);
   }
 })();
