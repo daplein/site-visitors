@@ -150,6 +150,7 @@ Sections, top to bottom:
    - **Light shading** on every country that has had a visitor.
    - Hovering or tapping a bubble or country shows "🇮🇪 Ireland: 610 visitors (54%)".
    - An **All time / This month** toggle switches the bubbles between the two numbers.
+   - A **World / Europe** toggle zooms smoothly into Europe, where bubbles crowd. Bubbles and labels keep their on-screen size while the map grows, so neighbours (Ireland and the UK) spread apart. The Europe frame is computed by `build-map.mjs` (`data-europe` on the `<svg>`) with the world map's aspect ratio, so the page doesn't jump.
 3. **Countries:** flag emoji (made from the ISO code), name (from `Intl.DisplayNames`), visitor count and a bar. Shows the top 10 with a "Show all" button.
 4. **Visitors per month:** a bar chart of the last 12 months, drawn in plain SVG, with the current month in red.
 5. **Cities** (3+ visitors) and **Pages**, side by side.
@@ -203,7 +204,7 @@ From this machine, the same way as `game-scores`. A GitHub Action with a Cloudfl
 
 ## Ideas for v2
 
-- Zoom into Europe (or pinch-zoom), where bubbles crowd.
+- Pinch-zoom and pan on phones.
 - City bubbles on the map (from the city's lat/long, cities with 3+ visitors only).
 - A month slider under the map to replay how visitors spread over time.
 - Daily chart for the current month.

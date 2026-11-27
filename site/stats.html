@@ -22,6 +22,7 @@ h1 { font-size: 34px; margin: 6px 0 2px; }
 section { background: #fff; border-radius: 16px; padding: 4px 20px 16px; margin-top: 18px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
 h2 { font-size: 20px; margin: 16px 0 8px; }
 .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.toggles { display: flex; gap: 8px; flex-wrap: wrap; }
 .toggle { display: inline-flex; border: 2px solid var(--ink); border-radius: 999px; overflow: hidden; margin-top: 8px; }
 .toggle button { border: 0; background: #fff; color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; padding: 5px 14px; cursor: pointer; }
 .toggle button[aria-pressed="true"] { background: var(--ink); color: #fff; }
@@ -32,9 +33,10 @@ h2 { font-size: 20px; margin: 16px 0 8px; }
 .map .countries path { fill: var(--land); stroke: #fff; stroke-width: .6; transition: fill .2s; }
 .map .countries path.seen { fill: var(--seen); }
 .map .countries path.hover { fill: #EE9A93; }
-.map .bubbles circle { fill: rgba(235,31,31,.62); stroke: var(--accent-dark); stroke-width: 1.6; transition: r .4s ease; cursor: pointer; }
+.map path, .map circle { vector-effect: non-scaling-stroke; } /* lines stay thin when zoomed */
+.map .bubbles circle { fill: rgba(235,31,31,.62); stroke: var(--accent-dark); stroke-width: 1.6; cursor: pointer; }
 .map .bubbles circle.hover { fill: var(--accent-dark); }
-.map .bubbles text { fill: #fff; font-weight: 800; paint-order: stroke; stroke: var(--accent-dark); stroke-width: 2.5px; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.map .bubbles text { fill: #fff; font-weight: 800; paint-order: stroke; stroke: var(--accent-dark); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 .tip { position: absolute; pointer-events: none; background: var(--ink); color: #fff; font-size: 14px; font-weight: 600;
   padding: 6px 10px; border-radius: 8px; white-space: nowrap; transform: translate(-50%, calc(-100% - 12px)); opacity: 0; transition: opacity .1s; }
 .tip.on { opacity: 1; }
@@ -97,9 +99,15 @@ footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 2
   <section>
     <div class="head">
       <h2>Where people are from</h2>
-      <div class="toggle" role="group" aria-label="Period">
-        <button type="button" data-period="all" aria-pressed="true">All time</button>
-        <button type="button" data-period="month" aria-pressed="false">This month</button>
+      <div class="toggles">
+        <div class="toggle" role="group" aria-label="Map area" id="view-toggle">
+          <button type="button" data-view="world" aria-pressed="true">World</button>
+          <button type="button" data-view="europe" aria-pressed="false">Europe</button>
+        </div>
+        <div class="toggle" role="group" aria-label="Period" id="period-toggle">
+          <button type="button" data-period="all" aria-pressed="true">All time</button>
+          <button type="button" data-period="month" aria-pressed="false">This month</button>
+        </div>
       </div>
     </div>
     <div class="map" id="map"><div class="tip" id="tip"></div></div>
@@ -212,9 +220,19 @@ footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 2
     labels.setAttribute("class", "bubbles");
     svg.appendChild(labels);
 
+    // Zoom: the SVG's viewBox moves between the world and the Europe frame. Bubbles and
+    // labels are divided by the zoom factor so they keep their on-screen size: zooming in
+    // spreads crowded bubbles apart instead of blowing them up.
+    const parseBox = (s) => s.trim().split(/\s+/).map(Number);
+    const worldBox = parseBox(svg.getAttribute("viewBox"));
+    const europeBox = svg.dataset.europe ? parseBox(svg.dataset.europe) : null;
+    let view = worldBox;
+    const zoom = () => worldBox[2] / view[2];
+
     function drawBubbles() {
       bubbles.replaceChildren();
       labels.replaceChildren();
+      const k = zoom();
       const rows = stats.countries.filter((c) => value(c) > 0 && anchors.has(c.country));
       const max = Math.max(1, ...rows.map(value));
       const placed = []; // label boxes so far, to keep numbers from overlapping
@@ -222,24 +240,25 @@ footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 2
       for (const c of rows.sort((a, b) => value(b) - value(a))) {
         const a = anchors.get(c.country);
         const x = Number(a.getAttribute("cx")), y = Number(a.getAttribute("cy"));
-        const r = Math.max(3.5, Math.sqrt(value(c) / max) * 30);
+        const px = Math.max(3.5, Math.sqrt(value(c) / max) * 30); // radius in screen-ish units
         const circle = document.createElementNS(svgNS, "circle");
         circle.setAttribute("cx", x);
         circle.setAttribute("cy", y);
-        circle.setAttribute("r", r.toFixed(1));
+        circle.setAttribute("r", (px / k).toFixed(2));
         circle.dataset.cc = c.country;
         bubbles.appendChild(circle);
 
         const text = compact(value(c));
-        const size = Math.min(16, r * 0.75);
+        const size = Math.min(16, px * 0.75) / k;
         const box = { x0: x - text.length * size * 0.33, x1: x + text.length * size * 0.33, y0: y - size * 0.6, y1: y + size * 0.6 };
         const clash = placed.some((b) => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0);
-        if (r >= 13 && !clash) {
+        if (px >= 13 && !clash) {
           placed.push(box);
           const t = document.createElementNS(svgNS, "text");
           t.setAttribute("x", x);
           t.setAttribute("y", y);
-          t.setAttribute("font-size", size.toFixed(1));
+          t.setAttribute("font-size", size.toFixed(2));
+          t.setAttribute("stroke-width", (2.5 / k).toFixed(2));
           t.textContent = text;
           labels.appendChild(t);
         }
@@ -247,13 +266,34 @@ footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 2
     }
     drawBubbles();
 
-    for (const btn of document.querySelectorAll(".toggle button")) {
-      btn.addEventListener("click", () => {
-        period = btn.dataset.period;
-        document.querySelectorAll(".toggle button").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+    function zoomTo(target) {
+      const from = view, start = performance.now(), ms = 450;
+      const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+      function frame(now) {
+        const t = ease(Math.min(1, (now - start) / ms));
+        view = from.map((v, i) => v + (target[i] - v) * t);
+        svg.setAttribute("viewBox", view.join(" "));
         drawBubbles();
-      });
+        if (t < 1) requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
     }
+
+    function wireToggle(group, onPick) {
+      const buttons = [...group.querySelectorAll("button")];
+      for (const btn of buttons) {
+        btn.addEventListener("click", () => {
+          buttons.forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+          onPick(btn);
+        });
+      }
+    }
+    wireToggle($("period-toggle"), (btn) => {
+      period = btn.dataset.period;
+      drawBubbles();
+    });
+    if (europeBox) wireToggle($("view-toggle"), (btn) => zoomTo(btn.dataset.view === "europe" ? europeBox : worldBox));
+    else $("view-toggle").hidden = true;
 
     // Tooltip on hover (mouse) or tap (touch).
     const tip = $("tip");
