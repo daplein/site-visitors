@@ -7,13 +7,13 @@ Status: **v1 live** since 27 Nov 2026.
 ## Goals
 
 - A small badge on every page: site-wide visitor count plus this page's count, linking to the stats page.
-- A public stats page anyone can open: a world map of visitors, totals, unique visitors per month, countries, cities, top pages.
+- A public stats page anyone can open: a world map of visitors, totals, unique visitors per month, countries, mobile vs desktop, cities, top pages.
 - Count **unique** visitors, so reloading or coming back the same month doesn't count again.
 - Keep the data to location and page. Never store a raw IP address.
 
 ## Non-goals (v1)
 
-- Referrers, devices, browsers, screen sizes, time on page. Location is the only detail kept.
+- Referrers, browsers, screen sizes, time on page. Location and mobile-or-desktop are the only details kept.
 - Backfilling history. Counting starts at zero on deploy.
 
 ## Architecture
@@ -65,15 +65,17 @@ See [migrations/0001_visitors.sql](migrations/0001_visitors.sql). Each table's p
 
 | Table | Primary key | Holds |
 |---|---|---|
-| `visitors` | visitor | all-time unique visitors, with country/region/city where first seen |
-| `site_months` | month, visitor | unique visitors per month, plus `ip` = `sha256(salt + IP)` for the per-IP cap |
+| `visitors` | visitor | all-time unique visitors, with country/region/city where first seen and `device` |
+| `site_months` | month, visitor | unique visitors per month, with `device`, plus `ip` = `sha256(salt + IP)` for the per-IP cap |
 | `page_visitors` | page, visitor | unique visitors per page, all time |
 | `page_months` | page, month, visitor | unique visitors per page, per month |
-| `counters` | kind, key, period | running totals: `site`, `page`, `country`, `city` × `all` or `YYYY-MM` |
+| `counters` | kind, key, period | running totals: `site`, `page`, `country`, `city`, `device` × `all` or `YYYY-MM` |
 
 A hit is one batch of `INSERT … ON CONFLICT DO NOTHING`s. SQLite triggers bump `counters` only when a row is really new, so a repeat visit changes nothing and nothing can double count. Reading counts (the badge, `/stats`) only touches `counters`, which stays small (a few hundred rows). That keeps D1 reads far inside the free tier however big the visitor tables get.
 
 Location comes from Cloudflare's `request.cf`, so there's no reverse IP lookup and no third-party service. A visitor with no country is filed under `XX`.
+
+**Device** (added in `0002_device.sql`) is `mobile` or `desktop`, worked out from the User-Agent when the visit is counted (`deviceType` in `src/lib.ts`). Phones and tablets are mobile. iPads that ask for the desktop site look like a Mac and count as desktop. Since the browser is part of the visitor hash, one person on a phone and a laptop is two visitors, one of each.
 
 Not stored: raw IP, User-Agent, cookies, referrer, timestamps of repeat visits. The Worker never logs the IP.
 
@@ -114,11 +116,13 @@ Everything the stats page needs, in one call (`Cache-Control: max-age=60`):
   "months":    [{ "month": "2026-11", "visitors": 87 }],
   "countries": [{ "country": "IE", "visitors": 610, "month": 41 }],
   "cities":    [{ "city": "Dublin", "region": "Leinster", "country": "IE", "visitors": 140 }],
-  "pages":     [{ "page": "/", "visitors": 980, "month": 60 }]
+  "pages":     [{ "page": "/", "visitors": 980, "month": 60 }],
+  "devices":   [{ "device": "mobile", "visitors": 790, "month": 61 }, { "device": "desktop", "visitors": 444, "month": 26 }]
 }
 ```
 
 - `months`: the last 12 months, oldest first, site-wide unique visitors per month, including months with zero visitors.
+- `devices`: always `mobile` then `desktop`, zeros included.
 - `countries`, `cities`, `pages`: all-time distinct visitors, sorted descending. `month` is this month's count, which feeds the map's toggle.
 - **City privacy:** only cities with **3 or more** visitors are listed, so "1 visitor from a small village" can't point at a person. Countries are always listed.
 
@@ -152,9 +156,10 @@ Sections, top to bottom:
    - An **All time / This month** toggle switches the bubbles between the two numbers.
    - A **World / Europe** toggle zooms smoothly into Europe, where bubbles crowd. Bubbles and labels keep their on-screen size while the map grows, so neighbours (Ireland and the UK) spread apart. The Europe frame is computed by `build-map.mjs` (`data-europe` on the `<svg>`) with the world map's aspect ratio, so the page doesn't jump.
 3. **Countries:** flag emoji (made from the ISO code), name (from `Intl.DisplayNames`), visitor count and a bar. Shows the top 10 with a "Show all" button.
-4. **Visitors per month:** a bar chart of the last 12 months, drawn in plain SVG, with the current month in red.
-5. **Cities** (3+ visitors) and **Pages**, side by side.
-6. **How this works:** IPs are hashed and never stored, only country, region and city are kept, there are no cookies, and the code is open.
+4. **Mobile or desktop:** two split bars (all time and this month), red for mobile and charcoal for desktop, with percentages and counts.
+5. **Visitors per month:** a bar chart of the last 12 months, drawn in plain SVG, with the current month in red.
+6. **Cities** (3+ visitors) and **Pages**, side by side.
+7. **How this works:** IPs are hashed and never stored, only country, region and city are kept, there are no cookies, and the code is open.
 
 The page counts its own visit first, then loads `/stats`, so a visitor sees themselves included.
 

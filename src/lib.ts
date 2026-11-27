@@ -26,3 +26,15 @@ export function lastMonths(n: number, now = new Date()): string[] {
   }
   return out;
 }
+
+export type Device = "mobile" | "desktop";
+
+/**
+ * Phones and tablets are "mobile". iPads that ask for the desktop site look like a Mac
+ * and count as desktop; that's the best the User-Agent can tell.
+ */
+export function deviceType(ua: string): Device {
+  return /Mobi|Android|iPhone|iPad|iPod|Windows Phone|webOS|BlackBerry|Opera Mini|IEMobile|Silk/i.test(ua)
+    ? "mobile"
+    : "desktop";
+}

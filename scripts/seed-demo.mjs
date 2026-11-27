@@ -16,5 +16,8 @@ months.forEach((m, i) => row("site", "", m, Math.round(20 + (i / 11) ** 1.6 * 18
 const thisMonth = months.at(-1);
 for (const [cc, n] of Object.entries(countries)) { row("country", cc, "all", n); row("country", cc, thisMonth, Math.ceil(n * 0.18)); }
 for (const [k, n] of cities) row("city", k, "all", n);
+const mobile = Math.round(total * 0.64);
+row("device", "mobile", "all", mobile); row("device", "desktop", "all", total - mobile);
+row("device", "mobile", thisMonth, Math.round(218 * 0.71)); row("device", "desktop", thisMonth, 218 - Math.round(218 * 0.71));
 for (const [p, n] of Object.entries(pages)) { row("page", p, "all", n); row("page", p, thisMonth, Math.ceil(n * 0.2)); }
 console.log(sql.join("\n"));

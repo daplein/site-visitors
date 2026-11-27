@@ -1,10 +1,12 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import worker, { type Counts } from "../src/index";
-import { isBot, lastMonths, MAX_VISITORS_PER_IP, normalizePage } from "../src/lib";
+import { deviceType, isBot, lastMonths, MAX_VISITORS_PER_IP, normalizePage } from "../src/lib";
 
 const SITE = "https://daplein.github.io";
 const CHROME = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/131.0 Safari/537.36";
+const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 Version/18.1 Mobile/15E148 Safari/604.1";
+const ANDROID_TABLET = "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 Chrome/131.0 Safari/537.36";
 
 interface Visit {
   page?: string;
@@ -153,6 +155,25 @@ describe("GET /stats", () => {
     ]);
   });
 
+  it("splits visitors into mobile and desktop", async () => {
+    await counts({ ip: "10.0.0.1", ua: IPHONE });
+    await counts({ ip: "10.0.0.2", ua: ANDROID_TABLET });
+    await counts({ ip: "10.0.0.3", ua: CHROME });
+    await counts({ ip: "10.0.0.1", ua: IPHONE, page: "/game-plan.html" }); // same visitor again
+
+    expect((await stats()).devices).toEqual([
+      { device: "mobile", visitors: 2, month: 2 },
+      { device: "desktop", visitors: 1, month: 1 },
+    ]);
+  });
+
+  it("always lists both devices, even with no visitors", async () => {
+    expect((await stats()).devices).toEqual([
+      { device: "mobile", visitors: 0, month: 0 },
+      { device: "desktop", visitors: 0, month: 0 },
+    ]);
+  });
+
   it("files visitors with no location under XX", async () => {
     await counts({ where: { country: undefined, region: undefined, city: undefined } });
     expect((await stats()).countries).toEqual([{ country: "XX", visitors: 1, month: 1 }]);
@@ -174,6 +195,14 @@ describe("helpers", () => {
     expect(isBot("")).toBe(true);
     expect(isBot("curl/8.4.0")).toBe(true);
     expect(isBot("Mozilla/5.0 (compatible; bingbot/2.0)")).toBe(true);
+  });
+
+  it("tells mobile from desktop", () => {
+    expect(deviceType(IPHONE)).toBe("mobile");
+    expect(deviceType(ANDROID_TABLET)).toBe("mobile");
+    expect(deviceType("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36")).toBe("mobile");
+    expect(deviceType(CHROME)).toBe("desktop");
+    expect(deviceType("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36")).toBe("desktop");
   });
 
   it("lists the last months across a year boundary", () => {

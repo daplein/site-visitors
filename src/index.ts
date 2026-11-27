@@ -8,7 +8,7 @@
 // Location comes from request.cf (Cloudflare's own geo data), so there's no IP lookup service.
 // See SPEC.md for the design and migrations/ for the tables and counting triggers.
 
-import { isBot, lastMonths, MAX_VISITORS_PER_IP, MIN_CITY_VISITORS, normalizePage } from "./lib";
+import { deviceType, isBot, lastMonths, MAX_VISITORS_PER_IP, MIN_CITY_VISITORS, normalizePage } from "./lib";
 
 interface Env {
   DB: D1Database;
@@ -89,17 +89,24 @@ async function hit(req: Request, env: Env, origin: string | null): Promise<Respo
   const region = cf.region || null;
   const city = cf.city || null;
   const now = Math.floor(Date.now() / 1000);
+  const device = deviceType(ua);
 
   // ON CONFLICT DO NOTHING (not INSERT OR IGNORE): an OR-clause on the outer statement
   // would override the upserts inside the counting triggers.
   const db = env.DB;
   const [, , , , countsResult] = await db.batch([
     db
-      .prepare("INSERT INTO visitors VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT DO NOTHING")
-      .bind(visitor, country, region, city, now),
+      .prepare(
+        `INSERT INTO visitors (visitor, country, region, city, first_seen, device)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT DO NOTHING`,
+      )
+      .bind(visitor, country, region, city, now, device),
     db
-      .prepare("INSERT INTO site_months VALUES (?1, ?2, ?3, ?4) ON CONFLICT DO NOTHING")
-      .bind(month, visitor, ipHash, country),
+      .prepare(
+        `INSERT INTO site_months (month, visitor, ip, country, device)
+         VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT DO NOTHING`,
+      )
+      .bind(month, visitor, ipHash, country, device),
     db.prepare("INSERT INTO page_visitors VALUES (?1, ?2) ON CONFLICT DO NOTHING").bind(page, visitor),
     db.prepare("INSERT INTO page_months VALUES (?1, ?2, ?3) ON CONFLICT DO NOTHING").bind(page, month, visitor),
     countsQuery(db, page, month),
@@ -125,6 +132,7 @@ async function stats(env: Env): Promise<Response> {
   const perMonth = new Map<string, number>();
   const countries = new Map<string, { country: string; visitors: number; month: number }>();
   const pages = new Map<string, { page: string; visitors: number; month: number }>();
+  const devices = new Map<string, { device: string; visitors: number; month: number }>();
   const cities: { city: string; region: string | null; country: string; visitors: number }[] = [];
   let total = 0;
 
@@ -142,6 +150,11 @@ async function stats(env: Env): Promise<Response> {
       if (r.period === "all") p.visitors = r.n;
       else if (r.period === month) p.month = r.n;
       pages.set(r.key, p);
+    } else if (r.kind === "device") {
+      const d = devices.get(r.key) ?? { device: r.key, visitors: 0, month: 0 };
+      if (r.period === "all") d.visitors = r.n;
+      else if (r.period === month) d.month = r.n;
+      devices.set(r.key, d);
     } else if (r.kind === "city" && r.period === "all" && r.n >= MIN_CITY_VISITORS) {
       const [country, region, city] = r.key.split("|");
       cities.push({ city, region: region || null, country, visitors: r.n });
@@ -156,6 +169,7 @@ async function stats(env: Env): Promise<Response> {
     countries: [...countries.values()].filter((c) => c.visitors > 0).sort(byVisitors),
     cities: cities.sort(byVisitors),
     pages: [...pages.values()].filter((p) => p.visitors > 0).sort(byVisitors),
+    devices: ["mobile", "desktop"].map((d) => devices.get(d) ?? { device: d, visitors: 0, month: 0 }),
   };
   return json(body, 200, { ...publicCors(), "Cache-Control": "public, max-age=60" });
 }

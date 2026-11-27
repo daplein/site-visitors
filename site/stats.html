@@ -56,6 +56,16 @@ h2 { font-size: 20px; margin: 16px 0 8px; }
 .cols section { margin-top: 18px; }
 @media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
 
+/* Mobile / desktop split */
+.split { margin: 6px 0 14px; }
+.split .when { font-size: 14px; color: var(--muted); margin-bottom: 4px; }
+.split .bar { display: flex; height: 26px; border-radius: 8px; overflow: hidden; background: #F1EEE9; }
+.split .bar i { display: block; height: 100%; transition: width .4s ease; }
+.split .bar .mobile { background: var(--accent); }
+.split .bar .desktop { background: var(--ink); }
+.split .legend { display: flex; justify-content: space-between; gap: 12px; font-size: 15px; margin-top: 4px; text-align: left; color: var(--ink); }
+.split .legend b { font-variant-numeric: tabular-nums; }
+
 /* Monthly chart */
 .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
 .chart rect { fill: var(--ink); }
@@ -120,6 +130,11 @@ footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 2
     <button class="more" id="countries-more" hidden>Show all</button>
   </section>
 
+  <section>
+    <h2>Mobile or desktop</h2>
+    <div id="devices"></div>
+  </section>
+
   <section class="chart">
     <h2>Visitors per month</h2>
     <div id="months"></div>
@@ -139,7 +154,7 @@ footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 2
   <section class="how">
     <h2>How this works</h2>
     <p>Each visitor is counted once per month, and once overall. To tell visitors apart, the counter keeps a scrambled code (a salted hash) made from your IP address and browser. Your IP address itself is never stored.</p>
-    <p>Cloudflare works out your country, region and city from the connection. That's all that's kept: no cookies and no tracking across sites. Cities only show here once at least 3 people have visited from them.</p>
+    <p>Cloudflare works out your country, region and city from the connection, and your browser tells whether you're on a phone or a computer. That's all that's kept: no cookies and no tracking across sites. Cities only show here once at least 3 people have visited from them.</p>
     <p>The code is open: <a href="https://github.com/daplein/site-visitors">github.com/daplein/site-visitors</a></p>
   </section>
 
@@ -189,6 +204,7 @@ footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 2
 
     if (svg) drawMap(stats, svg);
     listCountries(stats.countries, stats.total);
+    drawDevices(stats.devices ?? [], stats.months.at(-1).month);
     drawMonths(stats.months);
     list($("cities"), stats.cities, (c) => `${flag(c.country)} ${esc(c.city)}<span class="sub">${c.region ? ", " + esc(c.region) : ""}</span>`,
       "No city has 3 visitors yet.", stats.total);
@@ -353,6 +369,27 @@ footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 2
         <span class="n" title="${pct(r.visitors, total)}% of visitors">${fmt.format(r.visitors)}</span>
         <span class="bar"><i style="width:${Math.max(2, (r.visitors / max) * 100)}%"></i></span>
       </li>`).join("");
+  }
+
+  // ---------- mobile / desktop ----------
+
+  function drawDevices(devices, month) {
+    const get = (name, key) => devices.find((d) => d.device === name)?.[key] ?? 0;
+    const row = (label, key) => {
+      const m = get("mobile", key), d = get("desktop", key), total = m + d;
+      if (!total) return `<div class="split"><div class="when">${label}</div><p class="empty">No visitors yet.</p></div>`;
+      return `<div class="split">
+        <div class="when">${label}</div>
+        <div class="bar" role="img" aria-label="${pct(m, total)}% mobile, ${pct(d, total)}% desktop">
+          <i class="mobile" style="width:${(m / total) * 100}%"></i><i class="desktop" style="width:${(d / total) * 100}%"></i>
+        </div>
+        <div class="legend">
+          <span>📱 Mobile <b>${pct(m, total)}%</b> (${fmt.format(m)})</span>
+          <span>💻 Desktop <b>${pct(d, total)}%</b> (${fmt.format(d)})</span>
+        </div>
+      </div>`;
+    };
+    $("devices").innerHTML = row("All time", "visitors") + row(`In ${monthName(month, "long")}`, "month");
   }
 
   // ---------- monthly chart ----------
