@@ -11,7 +11,8 @@
     "test": "vitest run",
     "db:migrate:local": "wrangler d1 migrations apply site-visitors --local",
     "db:migrate": "wrangler d1 migrations apply site-visitors --remote",
-    "map": "node scripts/build-map.mjs"
+    "map": "node scripts/build-map.mjs",
+    "publish-site": "scripts/publish-site.sh"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.9.2",
