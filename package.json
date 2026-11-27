@@ -1,0 +1,29 @@
+{
+  "name": "site-visitors",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Unique-visitor counter and public stats for daplein.github.io",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "tsc",
+    "test": "vitest run",
+    "db:migrate:local": "wrangler d1 migrations apply site-visitors --local",
+    "db:migrate": "wrangler d1 migrations apply site-visitors --remote",
+    "map": "node scripts/build-map.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.9.2",
+    "@cloudflare/workers-types": "^5.20261127.1",
+    "@vitest/runner": "^4.1.12",
+    "@vitest/snapshot": "^4.1.12",
+    "d3-geo": "^3.1.2",
+    "i18n-iso-countries": "^7.14.0",
+    "topojson-client": "^3.1.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12",
+    "world-atlas": "^2.0.2",
+    "wrangler": "^4.168.0"
+  }
+}

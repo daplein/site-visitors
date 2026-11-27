@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visitors · daplein</title>
+<meta name="description" content="Who's been visiting daplein.github.io, and where they're from.">
+<style>
+:root { --accent: #EB1F1F; --accent-dark: #9E0F14; --ink: #2B2B2B; --muted: #666; --paper: #F4F1EC; --land: #DDD8D0; --seen: #F4C4C0; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--paper); color: var(--ink); line-height: 1.5; }
+main { max-width: 860px; margin: 0 auto; padding: 24px 20px 48px; }
+a { color: #0E7C86; }
+.hero { text-align: center; padding: 8px 0 4px; }
+h1 { font-size: 34px; margin: 6px 0 2px; }
+.tagline { margin: 0; font-size: 18px; color: #555; }
+.big { display: flex; justify-content: center; gap: 36px; margin: 18px 0 4px; flex-wrap: wrap; }
+.big div { text-align: center; }
+.big b { display: block; font-size: 44px; line-height: 1.1; color: var(--accent); font-variant-numeric: tabular-nums; }
+.big span { color: var(--muted); font-size: 15px; }
+section { background: #fff; border-radius: 16px; padding: 4px 20px 16px; margin-top: 18px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+h2 { font-size: 20px; margin: 16px 0 8px; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.toggle { display: inline-flex; border: 2px solid var(--ink); border-radius: 999px; overflow: hidden; margin-top: 8px; }
+.toggle button { border: 0; background: #fff; color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; padding: 5px 14px; cursor: pointer; }
+.toggle button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+
+/* Map */
+.map { position: relative; margin: 4px -8px 0; touch-action: manipulation; }
+.map svg { display: block; width: 100%; height: auto; }
+.map .countries path { fill: var(--land); stroke: #fff; stroke-width: .6; transition: fill .2s; }
+.map .countries path.seen { fill: var(--seen); }
+.map .countries path.hover { fill: #EE9A93; }
+.map .bubbles circle { fill: rgba(235,31,31,.62); stroke: var(--accent-dark); stroke-width: 1.6; transition: r .4s ease; cursor: pointer; }
+.map .bubbles circle.hover { fill: var(--accent-dark); }
+.map .bubbles text { fill: #fff; font-weight: 800; paint-order: stroke; stroke: var(--accent-dark); stroke-width: 2.5px; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: #fff; font-size: 14px; font-weight: 600;
+  padding: 6px 10px; border-radius: 8px; white-space: nowrap; transform: translate(-50%, calc(-100% - 12px)); opacity: 0; transition: opacity .1s; }
+.tip.on { opacity: 1; }
+.legend { color: var(--muted); font-size: 13px; margin: 6px 0 0; text-align: center; }
+
+/* Ranked lists */
+.rows { list-style: none; padding: 0; margin: 0; }
+.rows li { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 12px; padding: 8px 0; border-bottom: 1px solid #eee; }
+.rows li:last-child { border-bottom: 0; }
+.rows .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rows .n { font-weight: 700; font-variant-numeric: tabular-nums; }
+.rows .bar { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: #F1EEE9; overflow: hidden; }
+.rows .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.rows .sub { color: var(--muted); font-size: 14px; }
+.more { background: none; border: 0; color: #0E7C86; font: inherit; padding: 8px 0 0; cursor: pointer; text-decoration: underline; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.cols section { margin-top: 18px; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+
+/* Monthly chart */
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart rect { fill: var(--ink); }
+.chart rect.now { fill: var(--accent); }
+.chart text { font-size: 12px; fill: var(--muted); text-anchor: middle; }
+.chart text.v { fill: var(--ink); font-weight: 700; }
+
+.empty { color: var(--muted); }
+.note { margin: 14px 0 0; padding: 12px 16px; border-radius: 14px; background: #FFF4D6; border: 2px solid #F2C230; font-size: 15px; }
+.how p { margin: 8px 0; }
+footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 26px; }
+[hidden] { display: none !important; }
+</style>
+<script>
+  // stats.html?me stops counting this browser; ?me=off undoes it. Runs before visitors.js.
+  (() => {
+    const me = new URLSearchParams(location.search).get("me");
+    if (me === null) return;
+    try {
+      if (me === "off") localStorage.removeItem("site-visitors:ignore");
+      else localStorage.setItem("site-visitors:ignore", "1");
+    } catch {}
+    history.replaceState(null, "", location.pathname);
+  })();
+</script>
+</head>
+<body>
+<main>
+  <div class="hero">
+    <h1>👋 Visitors</h1>
+    <p class="tagline">Who's been stopping by, and where from.</p>
+    <div class="big">
+      <div><b id="total">–</b><span>visitors so far</span></div>
+      <div><b id="this-month">–</b><span id="this-month-label">this month</span></div>
+    </div>
+  </div>
+
+  <p class="note" id="ignored" hidden>This browser isn't counted. <a href="?me=off">Count me again</a></p>
+
+  <section>
+    <div class="head">
+      <h2>Where people are from</h2>
+      <div class="toggle" role="group" aria-label="Period">
+        <button type="button" data-period="all" aria-pressed="true">All time</button>
+        <button type="button" data-period="month" aria-pressed="false">This month</button>
+      </div>
+    </div>
+    <div class="map" id="map"><div class="tip" id="tip"></div></div>
+    <p class="legend">Bigger circle, more visitors. Hover or tap a country.</p>
+  </section>
+
+  <section>
+    <h2>Countries</h2>
+    <ul class="rows" id="countries"></ul>
+    <button class="more" id="countries-more" hidden>Show all</button>
+  </section>
+
+  <section class="chart">
+    <h2>Visitors per month</h2>
+    <div id="months"></div>
+  </section>
+
+  <div class="cols">
+    <section>
+      <h2>Cities</h2>
+      <ul class="rows" id="cities"></ul>
+    </section>
+    <section>
+      <h2>Pages</h2>
+      <ul class="rows" id="pages"></ul>
+    </section>
+  </div>
+
+  <section class="how">
+    <h2>How this works</h2>
+    <p>Each visitor is counted once per month, and once overall. To tell visitors apart, the counter keeps a scrambled code (a salted hash) made from your IP address and browser. Your IP address itself is never stored.</p>
+    <p>Cloudflare works out your country, region and city from the connection. That's all that's kept: no cookies and no tracking across sites. Cities only show here once at least 3 people have visited from them.</p>
+    <p>The code is open: <a href="https://github.com/daplein/site-visitors">github.com/daplein/site-visitors</a></p>
+  </section>
+
+  <footer><a href="/">← daplein.github.io</a></footer>
+</main>
+
+<script src="/visitors.js" data-badge="off"></script>
+<script>
+(() => {
+  const { api, ignoreKey } = window.siteVisitors;
+  const fmt = new Intl.NumberFormat();
+  const regionName = new Intl.DisplayNames(["en"], { type: "region" });
+  const $ = (id) => document.getElementById(id);
+  const svgNS = "http://www.w3.org/2000/svg";
+
+  try { $("ignored").hidden = localStorage.getItem(ignoreKey) !== "1"; } catch {}
+
+  const flag = (cc) => cc === "XX" ? "🏳️" : String.fromCodePoint(...[...cc].map((c) => 0x1F1A5 + c.charCodeAt(0)));
+  const countryName = (cc) => {
+    if (cc === "XX") return "Unknown";
+    try { return regionName.of(cc) ?? cc; } catch { return cc; }
+  };
+  const plural = (n, word) => `${fmt.format(n)} ${word}${n === 1 ? "" : "s"}`;
+  const pct = (n, total) => total ? Math.round((n / total) * 100) : 0;
+
+  // Fetch the stats once our own visit has been counted (or after a second, whichever is first).
+  const counted = new Promise((resolve) => {
+    document.addEventListener("site-visitors", resolve, { once: true });
+    setTimeout(resolve, 1500);
+  });
+  const statsReq = counted.then(() => fetch(`${api}/stats`, { cache: "no-cache" })).then((r) => r.json());
+  const mapReq = fetch("/world.svg").then((r) => r.text());
+
+  Promise.all([statsReq, mapReq.catch(() => null)])
+    .then(([stats, svg]) => render(stats, svg))
+    .catch(() => {
+      $("total").textContent = "?";
+      $("this-month").textContent = "?";
+      $("countries").innerHTML = '<li class="empty">Couldn\'t load the stats right now. Try again in a bit.</li>';
+    });
+
+  function render(stats, svg) {
+    $("total").textContent = fmt.format(stats.total);
+    $("this-month").textContent = fmt.format(stats.month);
+    $("this-month-label").textContent = "in " + monthName(stats.months.at(-1).month, "long");
+
+    if (svg) drawMap(stats, svg);
+    listCountries(stats.countries, stats.total);
+    drawMonths(stats.months);
+    list($("cities"), stats.cities, (c) => `${flag(c.country)} ${esc(c.city)}<span class="sub">${c.region ? ", " + esc(c.region) : ""}</span>`,
+      "No city has 3 visitors yet.", stats.total);
+    list($("pages"), stats.pages, (p) => `<a href="${esc(p.page)}">${p.page === "/" ? "Home" : esc(p.page.replace(/^\//, ""))}</a>`,
+      "No pages counted yet.", stats.total);
+  }
+
+  // ---------- map ----------
+
+  function drawMap(stats, svgText) {
+    const box = $("map");
+    box.insertAdjacentHTML("afterbegin", svgText);
+    const svg = box.querySelector("svg");
+    const anchors = new Map([...svg.querySelectorAll(".anchors circle")].map((c) => [c.dataset.cc, c]));
+    const bubbles = document.createElementNS(svgNS, "g");
+    bubbles.setAttribute("class", "bubbles");
+    svg.appendChild(bubbles);
+
+    const data = new Map(stats.countries.map((c) => [c.country, c]));
+    for (const path of svg.querySelectorAll(".countries path")) {
+      if (data.get(path.dataset.cc)?.visitors) path.classList.add("seen");
+    }
+
+    let period = "all";
+    const value = (c) => (period === "all" ? c.visitors : c.month);
+
+    // Numbers go in their own layer on top, so a neighbour's bubble never hides them.
+    const labels = document.createElementNS(svgNS, "g");
+    labels.setAttribute("class", "bubbles");
+    svg.appendChild(labels);
+
+    function drawBubbles() {
+      bubbles.replaceChildren();
+      labels.replaceChildren();
+      const rows = stats.countries.filter((c) => value(c) > 0 && anchors.has(c.country));
+      const max = Math.max(1, ...rows.map(value));
+      const placed = []; // label boxes so far, to keep numbers from overlapping
+      // Largest first, so small bubbles sit on top and stay clickable.
+      for (const c of rows.sort((a, b) => value(b) - value(a))) {
+        const a = anchors.get(c.country);
+        const x = Number(a.getAttribute("cx")), y = Number(a.getAttribute("cy"));
+        const r = Math.max(3.5, Math.sqrt(value(c) / max) * 30);
+        const circle = document.createElementNS(svgNS, "circle");
+        circle.setAttribute("cx", x);
+        circle.setAttribute("cy", y);
+        circle.setAttribute("r", r.toFixed(1));
+        circle.dataset.cc = c.country;
+        bubbles.appendChild(circle);
+
+        const text = compact(value(c));
+        const size = Math.min(16, r * 0.75);
+        const box = { x0: x - text.length * size * 0.33, x1: x + text.length * size * 0.33, y0: y - size * 0.6, y1: y + size * 0.6 };
+        const clash = placed.some((b) => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0);
+        if (r >= 13 && !clash) {
+          placed.push(box);
+          const t = document.createElementNS(svgNS, "text");
+          t.setAttribute("x", x);
+          t.setAttribute("y", y);
+          t.setAttribute("font-size", size.toFixed(1));
+          t.textContent = text;
+          labels.appendChild(t);
+        }
+      }
+    }
+    drawBubbles();
+
+    for (const btn of document.querySelectorAll(".toggle button")) {
+      btn.addEventListener("click", () => {
+        period = btn.dataset.period;
+        document.querySelectorAll(".toggle button").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+        drawBubbles();
+      });
+    }
+
+    // Tooltip on hover (mouse) or tap (touch).
+    const tip = $("tip");
+    let hovered = null;
+    function show(e) {
+      const el = e.target.closest?.("[data-cc]");
+      if (!el || !svg.contains(el)) return hide();
+      const cc = el.dataset.cc;
+      if (hovered !== cc) {
+        hide();
+        hovered = cc;
+        svg.querySelectorAll(`[data-cc="${cc}"]`).forEach((n) => n.classList.add("hover"));
+      }
+      const c = data.get(cc);
+      const n = c ? value(c) : 0;
+      const total = period === "all" ? stats.total : stats.month;
+      tip.textContent = `${flag(cc)} ${countryName(cc)}: ` + (n ? `${plural(n, "visitor")} (${pct(n, total)}%)` : "no visitors yet");
+      const rect = box.getBoundingClientRect();
+      tip.style.left = `${Math.min(Math.max(e.clientX - rect.left, 90), rect.width - 90)}px`;
+      tip.style.top = `${e.clientY - rect.top}px`;
+      tip.classList.add("on");
+    }
+    function hide() {
+      if (hovered) svg.querySelectorAll(`[data-cc="${hovered}"]`).forEach((n) => n.classList.remove("hover"));
+      hovered = null;
+      tip.classList.remove("on");
+    }
+    svg.addEventListener("pointermove", show);
+    svg.addEventListener("pointerdown", show);
+    svg.addEventListener("pointerleave", hide);
+  }
+
+  // ---------- lists ----------
+
+  function listCountries(countries, total) {
+    const ul = $("countries");
+    const label = (c) => `${flag(c.country)} ${esc(countryName(c.country))}`;
+    const SHOWN = 10;
+    list(ul, countries.slice(0, SHOWN), label, "No visitors yet. You could be the first!", total);
+    const more = $("countries-more");
+    if (countries.length > SHOWN) {
+      more.hidden = false;
+      more.textContent = `Show all ${countries.length} countries`;
+      more.onclick = () => { list(ul, countries, label, "", total); more.hidden = true; };
+    }
+  }
+
+  function list(ul, rows, label, emptyText, total) {
+    if (!rows.length) {
+      ul.innerHTML = `<li class="empty">${emptyText}</li>`;
+      return;
+    }
+    const max = rows[0].visitors;
+    ul.innerHTML = rows.map((r) => `
+      <li>
+        <span class="label">${label(r)}</span>
+        <span class="n" title="${pct(r.visitors, total)}% of visitors">${fmt.format(r.visitors)}</span>
+        <span class="bar"><i style="width:${Math.max(2, (r.visitors / max) * 100)}%"></i></span>
+      </li>`).join("");
+  }
+
+  // ---------- monthly chart ----------
+
+  function drawMonths(months) {
+    const W = 760, H = 200, top = 22, bottom = 26, gap = 10;
+    const max = Math.max(1, ...months.map((m) => m.visitors));
+    const bw = (W - gap * (months.length - 1)) / months.length;
+    const h = (v) => (v / max) * (H - top - bottom);
+    const bars = months.map((m, i) => {
+      const x = i * (bw + gap), bh = Math.max(m.visitors ? 3 : 1, h(m.visitors)), y = H - bottom - bh;
+      const now = i === months.length - 1 ? ' class="now"' : "";
+      return `<rect${now} x="${x}" y="${y}" width="${bw}" height="${bh}" rx="4"><title>${monthName(m.month, "long")}: ${plural(m.visitors, "visitor")}</title></rect>
+        ${m.visitors ? `<text class="v" x="${x + bw / 2}" y="${y - 6}">${compact(m.visitors)}</text>` : ""}
+        <text x="${x + bw / 2}" y="${H - 6}">${monthName(m.month, "short")}</text>`;
+    }).join("");
+    $("months").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Unique visitors per month">${bars}</svg>`;
+  }
+
+  // ---------- helpers ----------
+
+  function monthName(ym, style) {
+    const [y, m] = ym.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, 1)).toLocaleString("en", { month: style, timeZone: "UTC" });
+  }
+  function compact(n) {
+    return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  }
+})();
+</script>
+</body>
+</html>

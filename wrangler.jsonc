@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "site-visitors",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "observability": { "enabled": true },
+  "vars": {
+    // Comma-separated origins allowed to call the API (CORS + POST /hit).
+    "ALLOWED_ORIGINS": "https://daplein.github.io",
+    // Pages are checked against the live site before they're first counted.
+    "SITE_ORIGIN": "https://daplein.github.io",
+    "CHECK_PAGES": "true"
+  },
+  // VISITOR_SALT is a secret: `wrangler secret put VISITOR_SALT` (and .dev.vars locally).
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "site-visitors",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
