@@ -8,7 +8,16 @@
 // Location comes from request.cf (Cloudflare's own geo data), so there's no IP lookup service.
 // See SPEC.md for the design and migrations/ for the tables and counting triggers.
 
-import { deviceType, isBot, lastMonths, MAX_VISITORS_PER_IP, MIN_CITY_VISITORS, normalizePage } from "./lib";
+import {
+  deviceType,
+  isBot,
+  isDayPage,
+  lastMonths,
+  MAX_VISITORS_PER_IP,
+  MIN_CITY_VISITORS,
+  normalizePage,
+  sectionOf,
+} from "./lib";
 
 interface Env {
   DB: D1Database;
@@ -131,7 +140,7 @@ async function stats(env: Env): Promise<Response> {
   const month = months[months.length - 1];
   const perMonth = new Map<string, number>();
   const countries = new Map<string, { country: string; visitors: number; month: number }>();
-  const pages = new Map<string, { page: string; visitors: number; month: number }>();
+  const pages = new Map<string, PageCount>();
   const devices = new Map<string, { device: string; visitors: number; month: number }>();
   const cities: { city: string; region: string | null; country: string; visitors: number }[] = [];
   let total = 0;
@@ -161,17 +170,105 @@ async function stats(env: Env): Promise<Response> {
     }
   }
 
-  const byVisitors = (a: { visitors: number }, b: { visitors: number }) => b.visitors - a.visitors;
+  const pageList = [...pages.values()].filter((p) => p.visitors > 0).sort(byVisitors);
   const body = {
     total,
     month: perMonth.get(month) ?? 0,
     months: months.map((m) => ({ month: m, visitors: perMonth.get(m) ?? 0 })),
     countries: [...countries.values()].filter((c) => c.visitors > 0).sort(byVisitors),
     cities: cities.sort(byVisitors),
-    pages: [...pages.values()].filter((p) => p.visitors > 0).sort(byVisitors),
+    pages: pageList,
+    sections: await sections(env.DB, pageList, month),
     devices: ["mobile", "desktop"].map((d) => devices.get(d) ?? { device: d, visitors: 0, month: 0 }),
   };
   return json(body, 200, { ...publicCors(), "Cache-Control": "public, max-age=60" });
+}
+
+// ---------- sections ----------
+
+interface PageCount {
+  page: string;
+  visitors: number;
+  month: number;
+}
+
+interface Section {
+  section: string;
+  visitors: number;
+  month: number;
+  /** The section's pages, except dated ones when there are two or more of those. */
+  pages: PageCount[];
+  /** Dated pages ("/wing-alert/days/2026-11-29.html") folded into one row, or null. */
+  days: { visitors: number; month: number; pages: PageCount[] } | null;
+}
+
+const byVisitors = (a: { visitors: number }, b: { visitors: number }) => b.visitors - a.visitors;
+/** Most visitors first; ties by name, so the list doesn't shuffle between loads. */
+const ranked = <T extends { visitors: number }>(name: (x: T) => string) => (a: T, b: T) =>
+  b.visitors - a.visitors || name(a).localeCompare(name(b));
+
+/**
+ * Pages grouped by sectionOf(), so a part of the site with many pages takes one row.
+ * A group's count is its distinct visitors, not the sum of its pages: someone who opens
+ * five daily forecasts is one Wing Alert visitor. Groups of one page reuse that page's
+ * counters; bigger groups are counted from page_visitors / page_months in one batch.
+ */
+async function sections(db: D1Database, pages: PageCount[], month: string): Promise<Section[]> {
+  const bySection = new Map<string, PageCount[]>();
+  for (const p of [...pages].sort(ranked((p) => p.page))) {
+    const key = sectionOf(p.page);
+    bySection.set(key, [...(bySection.get(key) ?? []), p]);
+  }
+
+  // Each group needing a distinct count gets an id; [page, id] pairs go to SQL as JSON.
+  const pairs: [string, string][] = [];
+  const out: Section[] = [];
+  for (const [section, all] of bySection) {
+    const dayPages = all.filter((p) => isDayPage(p.page));
+    const folded = dayPages.length >= 2;
+    out.push({
+      section,
+      ...countsFor(all),
+      pages: folded ? all.filter((p) => !isDayPage(p.page)) : all,
+      days: folded ? { ...countsFor(dayPages), pages: dayPages } : null,
+    });
+    if (all.length > 1) for (const p of all) pairs.push([p.page, "s" + section]);
+    if (folded) for (const p of dayPages) pairs.push([p.page, "d" + section]);
+  }
+  if (!pairs.length) return out.sort(ranked((s) => s.section));
+
+  const groups = `WITH g AS (
+    SELECT json_extract(value, '$[0]') AS page, json_extract(value, '$[1]') AS grp FROM json_each(?1))`;
+  const [all, thisMonth] = await db.batch<{ grp: string; n: number }>([
+    db
+      .prepare(`${groups} SELECT grp, COUNT(DISTINCT visitor) AS n FROM page_visitors JOIN g USING (page) GROUP BY grp`)
+      .bind(JSON.stringify(pairs)),
+    db
+      .prepare(
+        `${groups} SELECT grp, COUNT(DISTINCT visitor) AS n FROM page_months JOIN g USING (page)
+         WHERE month = ?2 GROUP BY grp`,
+      )
+      .bind(JSON.stringify(pairs), month),
+  ]);
+  const distinct = (rows: { grp: string; n: number }[]) => new Map(rows.map((r) => [r.grp, r.n]));
+  const allN = distinct(all.results);
+  const monthN = distinct(thisMonth.results);
+  for (const s of out) {
+    if (allN.has("s" + s.section)) {
+      s.visitors = allN.get("s" + s.section)!;
+      s.month = monthN.get("s" + s.section) ?? 0;
+    }
+    if (s.days) {
+      s.days.visitors = allN.get("d" + s.section) ?? 0;
+      s.days.month = monthN.get("d" + s.section) ?? 0;
+    }
+  }
+  return out.sort(ranked((s) => s.section));
+}
+
+/** Starting counts for a group: right for a single page, replaced by SQL for bigger groups. */
+function countsFor(pages: PageCount[]): { visitors: number; month: number } {
+  return pages.length === 1 ? { visitors: pages[0].visitors, month: pages[0].month } : { visitors: 0, month: 0 };
 }
 
 // ---------- counts ----------

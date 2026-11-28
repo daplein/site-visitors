@@ -51,6 +51,18 @@ h2 { font-size: 20px; margin: 16px 0 8px; }
 .rows .bar { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: #F1EEE9; overflow: hidden; }
 .rows .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
 .rows .sub { color: var(--muted); font-size: 14px; }
+/* Pages: a section with several pages opens to show them */
+.rows li.group { display: block; padding: 0; }
+.rows summary { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 12px; padding: 8px 0; cursor: pointer; list-style: none; }
+.rows summary::-webkit-details-marker { display: none; }
+.rows summary .label::before { content: "▸"; display: inline-block; width: 1em; color: var(--muted); transition: transform .15s; }
+.rows details[open] > summary .label::before { transform: rotate(90deg); }
+.rows .rows { margin: 0 0 6px 1em; }
+.rows .rows li { padding: 5px 0; font-size: 15px; }
+.rows .rows .bar { height: 4px; }
+.rows .rows .bar i { background: var(--ink); }
+.rows .rows li.group { padding: 0; }
+.rows .rows summary { padding: 5px 0; }
 .more { background: none; border: 0; color: #0E7C86; font: inherit; padding: 8px 0 0; cursor: pointer; text-decoration: underline; }
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
 .cols section { margin-top: 18px; }
@@ -148,6 +160,7 @@ footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 2
     <section>
       <h2>Pages</h2>
       <ul class="rows" id="pages"></ul>
+      <button class="more" id="pages-more" hidden>Show all</button>
     </section>
   </div>
 
@@ -208,8 +221,8 @@ footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 2
     drawMonths(stats.months);
     list($("cities"), stats.cities, (c) => `${flag(c.country)} ${esc(c.city)}<span class="sub">${c.region ? ", " + esc(c.region) : ""}</span>`,
       "No city has 3 visitors yet.", stats.total);
-    list($("pages"), stats.pages, (p) => `<a href="${esc(p.page)}">${p.page === "/" ? "Home" : esc(p.page.replace(/^\//, ""))}</a>`,
-      "No pages counted yet.", stats.total);
+    // An older Worker has no `sections`: show each page on its own.
+    listSections(stats.sections ?? stats.pages.map((p) => ({ ...p, section: p.page, pages: [p], days: null })), stats.total);
   }
 
   // ---------- map ----------
@@ -358,17 +371,69 @@ footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 2
   }
 
   function list(ul, rows, label, emptyText, total) {
-    if (!rows.length) {
-      ul.innerHTML = `<li class="empty">${emptyText}</li>`;
-      return;
-    }
-    const max = rows[0].visitors;
-    ul.innerHTML = rows.map((r) => `
-      <li>
+    ul.innerHTML = rows.length ? rowsHtml(rows, label, total) : `<li class="empty">${emptyText}</li>`;
+  }
+
+  // One <li> per row. A row with `children` (HTML of its own rows) opens to show them.
+  function rowsHtml(rows, label, total) {
+    const max = Math.max(1, ...rows.map((r) => r.visitors));
+    return rows.map((r) => {
+      const cells = `
         <span class="label">${label(r)}</span>
         <span class="n" title="${pct(r.visitors, total)}% of visitors">${fmt.format(r.visitors)}</span>
-        <span class="bar"><i style="width:${Math.max(2, (r.visitors / max) * 100)}%"></i></span>
-      </li>`).join("");
+        <span class="bar"><i style="width:${Math.max(2, (r.visitors / max) * 100)}%"></i></span>`;
+      return r.children
+        ? `<li class="group"><details><summary>${cells}</summary><ul class="rows">${r.children}</ul></details></li>`
+        : `<li>${cells}</li>`;
+    }).join("");
+  }
+
+  // ---------- pages, grouped by section ----------
+
+  // A section is a top folder ("/wing-alert/") or a page at the root. Its number counts
+  // each visitor once, however many of its pages they opened, so it can be less than
+  // the sum of its pages. Dated pages (daily forecasts) fold into one "N days" row.
+  function listSections(sections, total) {
+    const ul = $("pages");
+    const SHOWN = 8;
+    const name = (path) => path === "/" ? "Home" : esc(path.replace(/^\/|\/$/g, ""));
+    const link = (page, text) => `<a href="${esc(page)}">${text}</a>`;
+    const inSection = (s, page) => page === s.section ? "Front page" : esc(page.slice(s.section.length));
+    const dayLabel = (page) => {
+      const iso = page.match(/(\d{4}-\d{2}-\d{2})(\.html|\/)?$/)[1];
+      const d = new Date(iso + "T12:00:00Z");
+      return isNaN(d) ? iso : d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+    };
+
+    const row = (s) => {
+      const count = s.pages.length + (s.days ? s.days.pages.length : 0);
+      if (count === 1) return { ...s, label: link(s.pages[0].page, name(s.section)) };
+      const items = s.pages.map((p) => ({ ...p, label: link(p.page, inSection(s, p.page)) }));
+      if (s.days) {
+        const days = [...s.days.pages].sort((a, b) => b.page.localeCompare(a.page)); // newest first
+        items.push({
+          ...s.days,
+          label: `${days.length} days`,
+          children: rowsHtml(days.map((p) => ({ ...p, label: link(p.page, dayLabel(p.page)) })), (r) => r.label, total),
+        });
+        items.sort((a, b) => b.visitors - a.visitors);
+      }
+      return {
+        ...s,
+        label: `${name(s.section)} <span class="sub">· ${count} pages</span>`,
+        children: rowsHtml(items, (r) => r.label, total),
+      };
+    };
+
+    const rows = sections.map(row);
+    const show = (n) => list(ul, rows.slice(0, n), (r) => r.label, "No pages counted yet.", total);
+    show(SHOWN);
+    const more = $("pages-more");
+    if (rows.length > SHOWN) {
+      more.hidden = false;
+      more.textContent = `Show all ${rows.length} sections`;
+      more.onclick = () => { show(rows.length); more.hidden = true; };
+    }
   }
 
   // ---------- mobile / desktop ----------

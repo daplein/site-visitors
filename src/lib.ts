@@ -38,3 +38,18 @@ export function deviceType(ua: string): Device {
     ? "mobile"
     : "desktop";
 }
+
+/**
+ * The part of the site a page belongs to, for grouping the stats page's Pages list:
+ * its top folder ("/wing-alert/days/2026-11-29.html" → "/wing-alert/"), or the page
+ * itself when it sits at the root ("/", "/stats.html").
+ */
+export function sectionOf(page: string): string {
+  const slash = page.indexOf("/", 1);
+  return slash === -1 ? page : page.slice(0, slash + 1);
+}
+
+/** A page named after a date, like Wing Alert's daily forecasts ("/wing-alert/days/2026-11-29.html"). */
+export function isDayPage(page: string): boolean {
+  return /\/\d{4}-\d{2}-\d{2}(\.html|\/)?$/.test(page);
+}
