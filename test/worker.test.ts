@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import worker, { type Counts } from "../src/index";
-import { deviceType, isBot, lastMonths, MAX_VISITORS_PER_IP, normalizePage } from "../src/lib";
+import { deviceType, isBot, isDayPage, lastMonths, MAX_VISITORS_PER_IP, normalizePage, sectionOf } from "../src/lib";
 
 const SITE = "https://daplein.github.io";
 const CHROME = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/131.0 Safari/537.36";
@@ -155,6 +155,51 @@ describe("GET /stats", () => {
     ]);
   });
 
+  it("groups pages into sections, counting each visitor once per group", async () => {
+    // Visitor A reads three daily forecasts and the front page; B reads one forecast and the spots page.
+    for (const page of ["/wing-alert/", "/wing-alert/days/2026-11-28.html", "/wing-alert/days/2026-11-29.html", "/wing-alert/days/2026-11-30.html"]) {
+      await counts({ ip: "10.0.0.1", page });
+    }
+    await counts({ ip: "10.0.0.2", page: "/wing-alert/days/2026-11-29.html" });
+    await counts({ ip: "10.0.0.2", page: "/wing-alert/spots.html" });
+    await counts({ ip: "10.0.0.3", page: "/stats.html" });
+    await counts({ ip: "10.0.0.3", page: "/apps/tiny-racers/" });
+
+    const s = await stats();
+    expect(s.pages).toHaveLength(7);
+    expect(s.sections).toEqual([
+      {
+        section: "/wing-alert/",
+        visitors: 2,
+        month: 2,
+        pages: [
+          { page: "/wing-alert/", visitors: 1, month: 1 },
+          { page: "/wing-alert/spots.html", visitors: 1, month: 1 },
+        ],
+        days: {
+          visitors: 2,
+          month: 2,
+          pages: [
+            { page: "/wing-alert/days/2026-11-29.html", visitors: 2, month: 2 },
+            { page: "/wing-alert/days/2026-11-28.html", visitors: 1, month: 1 },
+            { page: "/wing-alert/days/2026-11-30.html", visitors: 1, month: 1 },
+          ],
+        },
+      },
+      { section: "/apps/", visitors: 1, month: 1, pages: [{ page: "/apps/tiny-racers/", visitors: 1, month: 1 }], days: null },
+      { section: "/stats.html", visitors: 1, month: 1, pages: [{ page: "/stats.html", visitors: 1, month: 1 }], days: null },
+    ]);
+  });
+
+  it("leaves a single dated page unfolded", async () => {
+    await counts({ page: "/wing-alert/" });
+    await counts({ page: "/wing-alert/days/2026-11-29.html" });
+    const [wing] = (await stats()).sections;
+    expect(wing.days).toBeNull();
+    expect(wing.pages).toHaveLength(2);
+    expect(wing.visitors).toBe(1);
+  });
+
   it("splits visitors into mobile and desktop", async () => {
     await counts({ ip: "10.0.0.1", ua: IPHONE });
     await counts({ ip: "10.0.0.2", ua: ANDROID_TABLET });
@@ -188,6 +233,21 @@ describe("helpers", () => {
     expect(normalizePage("/stats.html")).toBe("/stats.html");
     expect(normalizePage("/myindex.html")).toBe("/myindex.html");
     expect(normalizePage(42)).toBeNull();
+  });
+
+  it("finds a page's section", () => {
+    expect(sectionOf("/")).toBe("/");
+    expect(sectionOf("/stats.html")).toBe("/stats.html");
+    expect(sectionOf("/wing-alert/")).toBe("/wing-alert/");
+    expect(sectionOf("/wing-alert/days/2026-11-29.html")).toBe("/wing-alert/");
+    expect(sectionOf("/apps/tiny-racers/")).toBe("/apps/");
+  });
+
+  it("spots dated pages", () => {
+    expect(isDayPage("/wing-alert/days/2026-11-29.html")).toBe(true);
+    expect(isDayPage("/blog/2026-11-29/")).toBe(true);
+    expect(isDayPage("/wing-alert/spots.html")).toBe(false);
+    expect(isDayPage("/2026-11-29-notes.html")).toBe(false);
   });
 
   it("spots bots", () => {

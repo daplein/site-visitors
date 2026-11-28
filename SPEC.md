@@ -117,6 +117,9 @@ Everything the stats page needs, in one call (`Cache-Control: max-age=60`):
   "countries": [{ "country": "IE", "visitors": 610, "month": 41 }],
   "cities":    [{ "city": "Dublin", "region": "Leinster", "country": "IE", "visitors": 140 }],
   "pages":     [{ "page": "/", "visitors": 980, "month": 60 }],
+  "sections":  [{ "section": "/wing-alert/", "visitors": 88, "month": 20,
+                  "pages": [{ "page": "/wing-alert/", "visitors": 70, "month": 14 }],
+                  "days":  { "visitors": 70, "month": 15, "pages": [{ "page": "/wing-alert/days/2026-11-28.html", "visitors": 30, "month": 6 }] } }],
   "devices":   [{ "device": "mobile", "visitors": 790, "month": 61 }, { "device": "desktop", "visitors": 444, "month": 26 }]
 }
 ```
@@ -124,6 +127,7 @@ Everything the stats page needs, in one call (`Cache-Control: max-age=60`):
 - `months`: the last 12 months, oldest first, site-wide unique visitors per month, including months with zero visitors.
 - `devices`: always `mobile` then `desktop`, zeros included.
 - `countries`, `cities`, `pages`: all-time distinct visitors, sorted descending. `month` is this month's count, which feeds the map's toggle.
+- `sections`: `pages` grouped so a part of the site with many pages takes one row. A section is a page's top folder (`/wing-alert/days/2026-11-28.html` → `/wing-alert/`), or the page itself at the root (`/`, `/stats.html`). Pages named after a date (`…/2026-11-28.html` or `…/2026-11-28/`) fold into `days` when a section has two or more; otherwise `days` is `null`. A section's or `days`' count is **distinct** visitors across its pages, not the sum (someone who reads five daily forecasts is one Wing Alert visitor), counted from `page_visitors` / `page_months`. Groups of one page reuse that page's counters, so only multi-page groups cost a query.
 - **City privacy:** only cities with **3 or more** visitors are listed, so "1 visitor from a small village" can't point at a person. Countries are always listed.
 
 ## The badge (`site/visitors.js`)
@@ -158,7 +162,7 @@ Sections, top to bottom:
 3. **Countries:** flag emoji (made from the ISO code), name (from `Intl.DisplayNames`), visitor count and a bar. Shows the top 10 with a "Show all" button.
 4. **Mobile or desktop:** two split bars (all time and this month), red for mobile and charcoal for desktop, with percentages and counts.
 5. **Visitors per month:** a bar chart of the last 12 months, drawn in plain SVG, with the current month in red.
-6. **Cities** (3+ visitors) and **Pages**, side by side.
+6. **Cities** (3+ visitors) and **Pages**, side by side. Pages lists sections: a single-page section is a plain link; a bigger one shows "wing-alert · 14 pages" and opens to its pages, with dated pages folded into one "12 days" row (newest first) that opens in turn. Top 8 sections, then "Show all".
 7. **How this works:** IPs are hashed and never stored, only country, region and city are kept, there are no cookies, and the code is open.
 
 The page counts its own visit first, then loads `/stats`, so a visitor sees themselves included.
