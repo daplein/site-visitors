@@ -407,7 +407,7 @@ footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 2
 
     const row = (s) => {
       const count = s.pages.length + (s.days ? s.days.pages.length : 0);
-      if (count === 1) return { ...s, label: link(s.pages[0].page, name(s.section)) };
+      if (count === 1) return { ...s, label: link(s.pages[0].page, name(s.pages[0].page)) }; // "apps/tiny-racers", not "apps"
       const items = s.pages.map((p) => ({ ...p, label: link(p.page, inSection(s, p.page)) }));
       if (s.days) {
         const days = [...s.days.pages].sort((a, b) => b.page.localeCompare(a.page)); // newest first
